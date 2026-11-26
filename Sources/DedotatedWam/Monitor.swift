@@ -9,6 +9,8 @@ struct Snapshot {
 
     var cpu = CPUSample()
     var memory = MemorySample(total: MemorySampler.physicalMemory)
+    /// Nil on Macs without a battery.
+    var battery: BatterySample?
     /// Running apps, biggest first.
     var apps: [RunningApp] = []
     var cpuHistory: [Double] = []
@@ -49,6 +51,8 @@ final class Monitor: ObservableObject {
     private var apps: [RunningApp] = []
     private var lastAppScan = Date.distantPast
     private var lastFrontmost: pid_t = 0
+    private var battery: BatterySample?
+    private var lastBatteryRead = Date.distantPast
     private var detailed = false
 
     init(store: SettingsStore, log: ActivityLog) {
@@ -87,6 +91,12 @@ final class Monitor: ObservableObject {
         let cpu = cpuSampler.sample()
         let memory = MemorySampler.sample()
 
+        // The battery moves slowly; reading it every few seconds is plenty.
+        if now.timeIntervalSince(lastBatteryRead) >= 6 {
+            battery = BatterySampler.sample()
+            lastBatteryRead = now
+        }
+
         cpuHistory.append(cpu.total)
         memoryHistory.append(memory.usedFraction)
         if cpuHistory.count > Snapshot.historyLength { cpuHistory.removeFirst(cpuHistory.count - Snapshot.historyLength) }
@@ -105,6 +115,7 @@ final class Monitor: ObservableObject {
         let snapshot = Snapshot(
             cpu: cpu,
             memory: memory,
+            battery: battery,
             apps: apps,
             cpuHistory: cpuHistory,
             memoryHistory: memoryHistory,

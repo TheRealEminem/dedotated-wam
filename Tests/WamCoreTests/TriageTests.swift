@@ -302,6 +302,29 @@ private let running = [
     }
 }
 
+@Suite struct BatteryTests {
+    @Test func lowBatteryOnlyWarnsWhenUnplugged() {
+        #expect(BatterySample(percent: 50, isCharging: false, onAC: false).severity == 0)
+        #expect(BatterySample(percent: 20, isCharging: false, onAC: false).severity == 1)
+        #expect(BatterySample(percent: 10, isCharging: false, onAC: false).severity == 2)
+        #expect(BatterySample(percent: 5, isCharging: true, onAC: true).severity == 0)
+    }
+
+    @Test func labels() {
+        #expect(BatterySample(percent: 40, isCharging: false, onAC: false, minutesRemaining: 135).remainingLabel == "2:15 until empty")
+        #expect(BatterySample(percent: 40, isCharging: true, onAC: true, minutesRemaining: 40).remainingLabel == "0:40 until full")
+        #expect(BatterySample(percent: 100, isCharging: false, onAC: true, minutesRemaining: 40).remainingLabel == nil)
+        #expect(BatterySample(percent: 40, isCharging: false, onAC: false).remainingLabel == nil)
+        #expect(BatterySample(percent: 100, isCharging: false, onAC: true).stateLabel == "Plugged in")
+    }
+
+    @Test func readingIsSaneWhenThereIsABattery() {
+        guard let battery = BatterySampler.sample() else { return }
+        #expect((0...100).contains(battery.percent))
+        #expect(!battery.isCharging || battery.onAC)
+    }
+}
+
 @Suite struct SettingsTests {
     @Test func missingKeysFallBackToDefaults() throws {
         let decoded = try JSONDecoder().decode(WamSettings.self, from: Data(#"{"mode":"armed","softUsedPercent":85}"#.utf8))

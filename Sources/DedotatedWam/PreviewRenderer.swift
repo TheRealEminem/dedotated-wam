@@ -53,6 +53,11 @@ enum PreviewRenderer {
             swapTotal: 8 * gb,
             pressure: [.normal, .warning, .critical][severity]
         )
+        snapshot.battery = [
+            BatterySample(percent: 90, isCharging: false, onAC: true),
+            BatterySample(percent: 18, isCharging: false, onAC: false, minutesRemaining: 41),
+            BatterySample(percent: 7, isCharging: false, onAC: false, minutesRemaining: 12),
+        ][severity]
         let cores: [Double] = [0.82, 0.64, 0.71, 0.33, 0.18, 0.09, 0.27, 0.12, 0.05, 0.02]
         snapshot.cpu = CPUSample(total: 0.34, user: 0.23, system: 0.11, perCore: cores)
         snapshot.cpuHistory = (0..<Snapshot.historyLength).map { 0.3 + 0.25 * sin(Double($0) / 4) + 0.1 * sin(Double($0) * 1.7) }
@@ -110,7 +115,7 @@ enum PreviewRenderer {
             }
         }
         let columns = 3
-        let cellWidth: CGFloat = 150
+        let cellWidth: CGFloat = 200
         let rowCount = Int(ceil(Double(rows.count) / Double(columns)))
         let pixelsWide = Int(cellWidth * CGFloat(columns) * scale)
         let pixelsHigh = Int(rowHeight * CGFloat(rowCount) * scale)

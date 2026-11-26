@@ -145,6 +145,8 @@ public struct WamSettings: Codable, Equatable, Sendable {
     public var menuBarStyle: MenuBarStyle = .full
     public var cpuGraphStyle: CPUGraphStyle = .history
     public var colorByPressure: Bool = true
+    /// Adds a battery meter, so the system's own battery icon can be switched off.
+    public var showBattery: Bool = true
 
     // Auto-close
     public var mode: AutoCloseMode = .off
@@ -186,6 +188,7 @@ public struct WamSettings: Codable, Equatable, Sendable {
         menuBarStyle = value(.menuBarStyle, defaults.menuBarStyle)
         cpuGraphStyle = value(.cpuGraphStyle, defaults.cpuGraphStyle)
         colorByPressure = value(.colorByPressure, defaults.colorByPressure)
+        showBattery = value(.showBattery, defaults.showBattery)
         mode = value(.mode, defaults.mode)
         softOnPressureWarning = value(.softOnPressureWarning, defaults.softOnPressureWarning)
         softOnUsedPercent = value(.softOnUsedPercent, defaults.softOnUsedPercent)

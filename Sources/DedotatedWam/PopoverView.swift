@@ -44,6 +44,9 @@ struct PopoverView: View {
             header
             MemoryCard(snapshot: snapshot)
             CPUCard(snapshot: snapshot)
+            if let battery = snapshot.battery {
+                BatteryCard(battery: battery)
+            }
             AppsCard(snapshot: snapshot, settings: store.settings, log: log)
             AutoCloseCard(snapshot: snapshot, store: store, lastEntry: log.entries.first)
             footer
@@ -211,6 +214,31 @@ private struct CPUCard: View {
                 }
                 .accessibilityLabel("Load per core")
             }
+        }
+    }
+}
+
+private struct BatteryCard: View {
+    var battery: BatterySample
+
+    var body: some View {
+        let color = battery.severity == 0 ? Color(nsColor: .systemGreen) : Palette.severity(battery.severity)
+        Card {
+            CardTitle(
+                title: "Battery",
+                value: "\(battery.percent)%",
+                detail: [battery.stateLabel, battery.remainingLabel].compactMap { $0 }.joined(separator: " · ")
+            )
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Palette.free)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(color)
+                        .frame(width: max(3, geometry.size.width * CGFloat(battery.fraction)))
+                }
+            }
+            .frame(height: 6)
+            .accessibilityHidden(true)
         }
     }
 }

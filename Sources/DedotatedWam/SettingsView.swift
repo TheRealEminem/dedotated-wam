@@ -58,6 +58,8 @@ private struct GeneralTab: View {
                 }
                 .disabled(store.settings.menuBarStyle == .compact)
                 Toggle("Turn the memory meter orange or red when memory is tight", isOn: $store.settings.colorByPressure)
+                Toggle("Show the battery", isOn: $store.settings.showBattery)
+                    .disabled(BatterySampler.sample() == nil)
                 Picker("Update every", selection: $store.settings.refreshSeconds) {
                     Text("1 second").tag(1.0)
                     Text("2 seconds").tag(2.0)
