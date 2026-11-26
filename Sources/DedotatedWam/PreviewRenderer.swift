@@ -27,6 +27,11 @@ enum PreviewRenderer {
         }
 
         monitor.snapshot = sample(severity: 0, settings: store.settings)
+        store.settings.mode = .off
+        if let protected = monitor.snapshot.apps.first(where: { store.settings.isProtected(bundleID: $0.bundleID) }) {
+            let view = PopoverView(monitor: monitor, store: store, log: log, openSettings: {}, confirmingPid: protected.pid)
+            render(view, dark: true, to: directory.appendingPathComponent("popover-confirm.png"))
+        }
         for (index, name) in ["settings-general", "settings-autoclose", "settings-priorities", "settings-activity"].enumerated() {
             let view = SettingsView(monitor: monitor, store: store, log: log, tab: index)
             render(view, dark: false, to: directory.appendingPathComponent("\(name).png"))

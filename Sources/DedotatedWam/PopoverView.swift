@@ -36,6 +36,8 @@ struct PopoverView: View {
     @ObservedObject var store: SettingsStore
     @ObservedObject var log: ActivityLog
     var openSettings: () -> Void
+    /// Preview rendering only: shows this app's row already asking for confirmation.
+    var confirmingPid: pid_t?
 
     private var snapshot: Snapshot { monitor.snapshot }
 
@@ -47,7 +49,7 @@ struct PopoverView: View {
             if let battery = snapshot.battery {
                 BatteryCard(battery: battery)
             }
-            AppsCard(snapshot: snapshot, settings: store.settings, log: log)
+            AppsCard(snapshot: snapshot, settings: store.settings, log: log, confirmingPid: confirmingPid)
             AutoCloseCard(snapshot: snapshot, store: store, lastEntry: log.entries.first)
             footer
         }
@@ -247,6 +249,7 @@ private struct AppsCard: View {
     var snapshot: Snapshot
     var settings: WamSettings
     var log: ActivityLog
+    var confirmingPid: pid_t?
 
     var body: some View {
         let apps = Array(snapshot.apps.prefix(7))
@@ -269,7 +272,14 @@ private struct AppsCard: View {
             }
             VStack(spacing: 1) {
                 ForEach(apps) { app in
-                    AppRow(app: app, group: group(for: app), share: Double(app.footprint) / Double(largest), log: log)
+                    AppRow(
+                        app: app,
+                        group: group(for: app),
+                        isProtected: settings.isProtected(bundleID: app.bundleID),
+                        share: Double(app.footprint) / Double(largest),
+                        log: log,
+                        pending: app.pid == confirmingPid ? .polite : nil
+                    )
                 }
             }
         }
@@ -284,8 +294,12 @@ private struct AppsCard: View {
 private struct AppRow: View {
     var app: RunningApp
     var group: TriageGroup?
+    /// Protected apps can still be quit from here, but only after a second, explicit click.
+    var isProtected: Bool
     var share: Double
     var log: ActivityLog
+    /// The quit the user has asked for on a protected app and not yet confirmed.
+    @Local var pending: CloseMethod?
     @Local private var hovering = false
 
     var body: some View {
@@ -293,39 +307,11 @@ private struct AppRow: View {
             Image(nsImage: IconCache.icon(bundleID: app.bundleID, pid: app.pid))
                 .resizable()
                 .frame(width: 18, height: 18)
-            Text(app.name)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if let group {
-                Text(group.name)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Palette.action(group.action))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(Palette.action(group.action).opacity(0.13), in: Capsule())
-                    .lineLimit(1)
-                    .fixedSize()
+            if let pending {
+                confirmation(for: pending)
+            } else {
+                details
             }
-            Spacer(minLength: 4)
-            if hovering {
-                Button {
-                    close(.polite)
-                } label: {
-                    Image(systemName: "xmark.circle")
-                }
-                .help("Quit \(app.name)")
-                Button {
-                    close(.force)
-                } label: {
-                    Image(systemName: "bolt.circle")
-                }
-                .help("Force quit \(app.name). Unsaved work in it is lost.")
-            }
-            Text(ByteFormat.string(app.footprint))
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 58, alignment: .trailing)
         }
         .buttonStyle(.borderless)
         .padding(.vertical, 3)
@@ -333,15 +319,98 @@ private struct AppRow: View {
         .background(alignment: .leading) {
             GeometryReader { geometry in
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.primary.opacity(hovering ? 0.1 : 0.05))
-                    .frame(width: geometry.size.width * CGFloat(min(1, max(0.02, share))))
+                    .fill(pending == nil ? Color.primary.opacity(hovering ? 0.1 : 0.05) : Color(nsColor: .systemOrange).opacity(0.16))
+                    .frame(width: pending == nil ? geometry.size.width * CGFloat(min(1, max(0.02, share))) : geometry.size.width)
             }
         }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
+        .onHover { inside in
+            hovering = inside
+            // Moving away is a "no".
+            if !inside { pending = nil }
+        }
     }
 
-    private func close(_ method: CloseMethod) {
+    @ViewBuilder private var details: some View {
+        Text(app.name)
+            .font(.system(size: 12))
+            .lineLimit(1)
+            .truncationMode(.tail)
+        if isProtected {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 8))
+                .foregroundStyle(.tertiary)
+                .help("Protected. Quitting it from here asks first.")
+        }
+        if let group {
+            Text(group.name)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(Palette.action(group.action))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Palette.action(group.action).opacity(0.13), in: Capsule())
+                .lineLimit(1)
+                .fixedSize()
+        }
+        Spacer(minLength: 4)
+        if hovering {
+            Button {
+                request(.polite)
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .help(isProtected ? "Quit \(app.name). It is protected, so you will be asked to confirm." : "Quit \(app.name)")
+            Button {
+                request(.force)
+            } label: {
+                Image(systemName: "bolt.circle")
+            }
+            .help(isProtected
+                ? "Force quit \(app.name). It is protected, so you will be asked to confirm."
+                : "Force quit \(app.name). Unsaved work in it is lost.")
+        }
+        Text(ByteFormat.string(app.footprint))
+            .font(.system(size: 11).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 58, alignment: .trailing)
+    }
+
+    @ViewBuilder private func confirmation(for method: CloseMethod) -> some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(Color(nsColor: .systemOrange))
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(app.name) is protected")
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text("\(method.verb) it anyway?")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        Spacer(minLength: 4)
+        Button("Cancel") { pending = nil }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+        Button(method.verb) {
+            pending = nil
+            close(method, confirmed: true)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Color(nsColor: .systemRed))
+        .controlSize(.mini)
+    }
+
+    private func request(_ method: CloseMethod) {
+        if isProtected {
+            pending = method
+        } else {
+            close(method, confirmed: false)
+        }
+    }
+
+    private func close(_ method: CloseMethod, confirmed: Bool) {
         let succeeded = Closer.close(pid: app.pid, method: method)
         log.add(LogEntry(
             kind: .manual,
@@ -350,7 +419,7 @@ private struct AppRow: View {
             method: method,
             succeeded: succeeded,
             footprint: app.footprint,
-            detail: "From the menu bar popover."
+            detail: confirmed ? "From the menu bar popover, after confirming (protected app)." : "From the menu bar popover."
         ))
     }
 }

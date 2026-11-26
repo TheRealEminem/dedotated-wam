@@ -340,6 +340,22 @@ private let running = [
         #expect(decoded == original)
     }
 
+    @Test func protectedMeansNeverGroupOrCatalogSystemApp() {
+        let custom = settings()
+        // In the "never" group.
+        #expect(custom.isProtected(bundleID: "z.finder"))
+        // In a closeable group: the user's choice wins, even for a system app.
+        #expect(!custom.isProtected(bundleID: "a.music"))
+        var moved = custom
+        moved.groups[0].apps.append(AppRule(bundleID: "com.apple.finder", name: "Finder"))
+        #expect(!moved.isProtected(bundleID: "com.apple.finder"))
+        // In no group: the catalog decides.
+        #expect(custom.isProtected(bundleID: "com.apple.finder"))
+        #expect(custom.isProtected(bundleID: "com.apple.campo"))
+        #expect(!custom.isProtected(bundleID: "org.example.nobody-knows"))
+        #expect(!custom.isProtected(bundleID: nil))
+    }
+
     @Test func autoCloseStartsOff() {
         #expect(WamSettings().mode == .off)
     }

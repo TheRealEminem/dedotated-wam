@@ -215,6 +215,14 @@ public struct WamSettings: Codable, Equatable, Sendable {
         return groups.firstIndex { group in group.apps.contains { $0.bundleID.lowercased() == key } }
     }
 
+    /// True for apps that should not be closed casually: anything in a "never close" group, and
+    /// apps in no group that the catalog marks as system pieces. A group the user chose always wins.
+    public func isProtected(bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        if let index = groupIndex(forBundleID: bundleID) { return groups[index].action == .never }
+        return AppCatalog.classify(bundleID: bundleID, category: nil) == .never
+    }
+
     // MARK: Seeding
 
     /// The four starting groups, in closing order, filled from the catalog.

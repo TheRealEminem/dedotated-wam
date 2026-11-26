@@ -5,7 +5,7 @@ A macOS menu bar app that shows CPU and memory use as small live meters and, whe
 ## What it does
 
 - **Menu bar meters.** CPU as a row of bars (recent history, or one bar per core) and memory as a capsule that fills up, shaded by app, wired and compressed memory. The memory meter turns orange, then red, as memory gets tight. On a laptop a battery meter sits beside them (with a bolt while plugged in, orange or red when running low), so the system's own battery icon can be switched off. Three layouts: graphs with numbers, graphs only, compact stacked bars.
-- **Popover.** Click the meters for the memory breakdown, swap, per-core CPU, and the biggest apps with their helper processes counted in (a browser is charged for its tabs). Hover an app to quit or force quit it.
+- **Popover.** Click the meters for the memory breakdown, swap, per-core CPU, and the biggest apps with their helper processes counted in (a browser is charged for its tabs). Hover an app to quit or force quit it. Protected apps (your "never close" groups and system pieces such as Finder) show a lock and ask you to confirm first.
 - **Auto-close.** Off by default. In *Warn only* it tells you what it would close. In *Auto-close* it works through your groups until memory recovers:
   - **Stage 1** (memory tight): asks apps to quit nicely, one at a time, with a pause between each.
   - **Stage 2** (memory critical): apps in a "force if stuck" group that ignored the polite request are force quit.
