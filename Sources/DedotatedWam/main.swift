@@ -87,6 +87,11 @@ if arguments.contains("--print-snapshot") {
     exit(0)
 }
 
+if let flag = arguments.firstIndex(of: "--drill") {
+    // Developer aid: a live check of the closing path against the named targets only.
+    Drill.run(targets: Array(arguments[(flag + 1)...]))
+}
+
 // One copy is enough.
 if let bundleID = Bundle.main.bundleIdentifier {
     let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)

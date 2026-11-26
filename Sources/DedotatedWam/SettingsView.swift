@@ -117,7 +117,10 @@ private struct AutoCloseTab: View {
             }
 
             Section("Stage 1: ask apps to quit when") {
-                Toggle("macOS reports memory pressure as Warning", isOn: $store.settings.softOnPressureWarning)
+                Toggle(isOn: $store.settings.softOnPressureWarning) {
+                    Text("macOS reports memory pressure as Warning")
+                    Text("A Mac with a lot open can stay at Warning for hours while working fine.")
+                }
                 ThresholdRow(title: "Memory used reaches", isOn: $store.settings.softOnUsedPercent, value: $store.settings.softUsedPercent, range: 50...99, unit: "%")
                 Toggle(isOn: $store.settings.softOnSwap) {
                     Stepper(value: $store.settings.softSwapGB, in: 1...64, step: 1) {

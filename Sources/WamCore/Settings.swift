@@ -163,8 +163,9 @@ public struct WamSettings: Codable, Equatable, Sendable {
 
     // Auto-close
     public var mode: AutoCloseMode = .off
-    /// Stage one (close nicely) starts when macOS reports memory pressure "warning".
-    public var softOnPressureWarning: Bool = true
+    /// Stage one (close nicely) can also start when macOS reports memory pressure "warning".
+    /// Off unless chosen: a Mac with a lot open can sit at "warning" for hours while working fine.
+    public var softOnPressureWarning: Bool = false
     public var softOnUsedPercent: Bool = true
     public var softUsedPercent: Int = 92
     public var softOnSwap: Bool = false

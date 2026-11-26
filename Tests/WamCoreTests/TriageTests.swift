@@ -52,9 +52,17 @@ private let running = [
         #expect(TriagePlanner.instantStage(settings: settings(), memory: memory(usedPercent: 80)) == .calm)
     }
 
-    @Test func softOnWarningPressureOrUsedPercent() {
-        #expect(TriagePlanner.instantStage(settings: settings(), memory: memory(usedPercent: 50, pressure: .warning)) == .soft)
+    @Test func softOnUsedPercent() {
         #expect(TriagePlanner.instantStage(settings: settings(), memory: memory(usedPercent: 93)) == .soft)
+    }
+
+    /// A busy Mac can report "warning" for hours while working fine, so it must be asked for.
+    @Test func warningPressureAloneDoesNothingUnlessChosen() {
+        let warning = memory(usedPercent: 50, pressure: .warning)
+        #expect(TriagePlanner.instantStage(settings: settings(), memory: warning) == .calm)
+        var custom = settings()
+        custom.softOnPressureWarning = true
+        #expect(TriagePlanner.instantStage(settings: custom, memory: warning) == .soft)
     }
 
     @Test func hardOnCriticalPressureOrUsedPercent() {
