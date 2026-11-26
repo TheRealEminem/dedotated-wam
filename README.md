@@ -1,3 +1,5 @@
+![Dedotated Wam: CPU and memory meters that close apps before your Mac chokes](Resources/banner.png)
+
 # Dedotated Wam
 
 A macOS menu bar app that shows CPU and memory use as small live meters and, when memory runs out, closes apps for you in an order you choose, so the Mac never gets to the point where it is too choked to close anything by hand.
