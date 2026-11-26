@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dedotated Wam · meters that close apps before your Mac chokes</title>
+  <meta name="description" content="Dedotated Wam puts live CPU and memory meters in your Mac's menu bar and, when memory runs out, closes apps for you in the order you chose. Free and open source." />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="canonical" href="https://therealeminem.github.io/dedotated-wam/" />
+  <meta name="theme-color" content="#0b0c0d" />
+  <meta name="color-scheme" content="dark light" />
+  <!-- Link previews (Slack, iMessage, LinkedIn, X): they need an absolute image URL -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Dedotated Wam" />
+  <meta property="og:url" content="https://therealeminem.github.io/dedotated-wam/" />
+  <meta property="og:title" content="Dedotated Wam · meters that close apps before your Mac chokes" />
+  <meta property="og:description" content="Live CPU and memory meters in your Mac's menu bar. When memory runs out, it closes apps for you in the order you chose. Free and open source." />
+  <meta property="og:image" content="https://therealeminem.github.io/dedotated-wam/assets/social.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A stick of memory with a meter running from green to red along it, under the name Dedotated Wam" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Dedotated Wam · meters that close apps before your Mac chokes" />
+  <meta name="twitter:description" content="Live CPU and memory meters in your Mac's menu bar. When memory runs out, it closes apps for you in the order you chose. Free and open source." />
+  <meta name="twitter:image" content="https://therealeminem.github.io/dedotated-wam/assets/social.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* Dedotated Wam's palette, a stick of memory: Board (black circuit board, gold contacts) by default,
+       Bench when the Mac is in light mode. The stick in the hero stays a dark object in both. */
+    :root {
+      --bg: #0b0c0d; --bg-top: #121416; --surface: #15181a; --ink: #f3efe6; --soft: #a4a69d; --line: rgba(236, 220, 170, 0.10);
+      --gold: #d9a93a; --gold-ink: #ecc668; --gold-soft: rgba(217, 169, 58, 0.14);
+      --go: #3ddc84; --go-hover: #62e69c; --on-go: #05140b; --cta-shadow: rgba(61, 220, 132, 0.22);
+      --warn: #f5b83a; --stop: #ff5a48; --trace: rgba(217, 169, 58, 0.09);
+      --glow-a: rgba(61, 220, 132, 0.07); --glow-b: rgba(255, 90, 72, 0.07);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f0eee7; --bg-top: #f8f7f2; --surface: #fcfbf7; --ink: #16191b; --soft: #5c6058; --line: rgba(22, 25, 27, 0.12);
+        --gold: #a87a16; --gold-ink: #7d5a0c; --gold-soft: rgba(168, 122, 22, 0.13);
+        --go: #11864a; --go-hover: #0c6e3c; --on-go: #ffffff; --cta-shadow: rgba(17, 134, 74, 0.25);
+        --warn: #b9770a; --stop: #c9321f; --trace: rgba(120, 88, 20, 0.10);
+        --glow-a: rgba(17, 134, 74, 0.06); --glow-b: rgba(201, 50, 31, 0.05);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Geist, -apple-system, system-ui, sans-serif; }
+    a { color: var(--go); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; font: 800 19px Archivo, sans-serif; font-stretch: 125%; letter-spacing: 0.01em;
+      text-transform: uppercase; color: var(--ink); text-decoration: none; }
+    .brand img { width: 34px; height: 34px; }
+    .gh { color: var(--soft); text-decoration: none; font-weight: 500; }
+    .hero { padding: 40px 0 20px; text-align: center; }
+    h1 { font: 800 clamp(34px, 6.4vw, 66px)/1.02 Archivo, sans-serif; font-stretch: 125%; text-transform: uppercase; letter-spacing: -0.005em;
+      margin: 0 auto 20px; max-width: 16ch; text-wrap: balance; }
+    .lead { color: var(--soft); font-size: 19px; max-width: 41rem; margin: 0 auto 30px; }
+    .cta { display: inline-flex; align-items: center; gap: 10px; background: var(--go); color: var(--on-go); text-decoration: none; font-weight: 600;
+      padding: 15px 26px; border-radius: 10px; font-size: 18px; box-shadow: 0 6px 24px var(--cta-shadow); }
+    .cta:hover { background: var(--go-hover); }
+    .cta svg { width: 20px; height: 20px; }
+    .meta { color: var(--soft); font-size: 14px; margin-top: 12px; }
+
+    /* The stick: a meter you can watch react. Always dark, whatever the page theme. */
+    .demo { margin: 44px auto 0; max-width: 940px; text-align: left; }
+    .readout { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 4px 12px; min-height: 58px; }
+    .readout .label { font: 600 12px "Geist Mono", ui-monospace, monospace; letter-spacing: 0.12em; color: var(--soft); text-transform: uppercase; }
+    .readout .num { font: 800 44px/1 Archivo, sans-serif; font-stretch: 125%; font-variant-numeric: tabular-nums; }
+    .readout .say { font: 500 14px/1.4 "Geist Mono", ui-monospace, monospace; color: var(--soft); text-align: right; max-width: 30rem; }
+    .readout .say b { font-weight: 600; }
+    .say.warn b { color: var(--warn); } .say.stop b { color: var(--stop); } .say.calm b { color: var(--go); }
+    .stick { filter: drop-shadow(0 26px 40px rgba(0, 0, 0, 0.45)); }
+    .pcb { position: relative; background: linear-gradient(180deg, #1b1d1f, #101213); border: 1px solid rgba(217, 169, 58, 0.28); border-bottom: 0;
+      border-radius: 8px 8px 0 0; padding: clamp(18px, 4.6vw, 44px) clamp(14px, 4vw, 40px) clamp(16px, 3.6vw, 34px);
+      -webkit-mask: radial-gradient(circle 10px at 0 64%, #0000 97%, #000), radial-gradient(circle 10px at 100% 64%, #0000 97%, #000);
+      -webkit-mask-composite: source-in; mask: radial-gradient(circle 10px at 0 64%, #0000 97%, #000), radial-gradient(circle 10px at 100% 64%, #0000 97%, #000);
+      mask-composite: intersect; }
+    .pcb::before { content: ""; position: absolute; left: 50%; top: 9px; width: 34px; height: 16px; margin-left: -17px; border-radius: 2px; background: #060707;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05); }
+    .chips { display: grid; grid-template-columns: repeat(8, 1fr); gap: clamp(4px, 1.1vw, 12px); }
+    .chips i { display: block; aspect-ratio: 1 / 1.05; border-radius: 5px; background: linear-gradient(180deg, #0c0d0e, #060707);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 0 rgba(0, 0, 0, 0.6); }
+    .leds { position: absolute; left: clamp(22px, 5.2vw, 56px); right: clamp(22px, 5.2vw, 56px); top: 50%; height: clamp(18px, 5vw, 46px);
+      margin-top: calc(clamp(18px, 5vw, 46px) / -2 + 4px); display: flex; gap: clamp(2px, 0.45vw, 5px); }
+    .leds i { flex: 1; border-radius: 2px; background: #1d2022; transition: background-color 0.18s, box-shadow 0.18s; }
+    .leds i.on { background: var(--c); box-shadow: 0 0 10px var(--c); }
+    .fingers { display: grid; grid-template-columns: 47fr 2fr 51fr; height: clamp(10px, 2vw, 18px); background: #101213; border: 1px solid rgba(217, 169, 58, 0.28);
+      border-top: 0; border-radius: 0 0 3px 3px; padding: 0 clamp(8px, 2vw, 22px) 0; }
+    .fingers i { background: repeating-linear-gradient(90deg, #d9a93a 0 4px, #6d5215 4px 5px, transparent 5px 7px); }
+    .fingers i:nth-child(2) { background: none; }
+    .fine { color: var(--soft); font-size: 13.5px; margin: 14px 4px 0; text-align: center; }
+
+    section { padding: 60px 0 8px; }
+    h2 { font: 800 28px/1.15 Archivo, sans-serif; font-stretch: 125%; text-transform: uppercase; margin: 0 0 8px; }
+    .sub { color: var(--soft); margin: 0 0 26px; max-width: 46rem; }
+    .steps { display: grid; gap: 14px; counter-reset: step; }
+    .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px 22px 78px; position: relative; }
+    .step::before { counter-increment: step; content: "0" counter(step); position: absolute; left: 22px; top: 22px; font: 600 15px "Geist Mono", ui-monospace, monospace;
+      color: var(--gold-ink); background: var(--gold-soft); border-radius: 5px; padding: 3px 8px; }
+    .step h3 { margin: 0 0 6px; font-size: 18px; }
+    .step p, .step ol { margin: 6px 0 0; color: var(--soft); }
+    .step ol { padding-left: 20px; }
+    .step li { margin: 3px 0; }
+    b { color: var(--ink); font-weight: 600; }
+    code { font: 500 13.5px "Geist Mono", ui-monospace, monospace; background: var(--gold-soft); color: var(--gold-ink); padding: 2px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+    .why { font-size: 14px; border-left: 3px solid var(--gold); padding-left: 12px; margin-top: 12px !important; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+    .card h3 { margin: 0 0 6px; font-size: 17px; }
+    .card p { margin: 0; color: var(--soft); font-size: 15.5px; }
+
+    /* The closing order, drawn as the meter's own colours from first to go to never */
+    .ladder { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .ladder li { display: grid; grid-template-columns: 6px 1fr; gap: 0 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .ladder li::before { content: ""; background: var(--c); }
+    .ladder div { padding: 16px 20px 16px 0; }
+    .ladder h3 { margin: 0; font-size: 17px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+    .ladder h3 span { font: 500 12.5px "Geist Mono", ui-monospace, monospace; color: var(--soft); }
+    .ladder p { margin: 4px 0 0; color: var(--soft); font-size: 15.5px; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; margin-top: 14px; }
+
+    .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; justify-items: center; }
+    .shots figure { margin: 0; max-width: 360px; }
+    .shots img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); }
+    .shots figcaption { color: var(--soft); font-size: 14.5px; margin-top: 12px; text-align: center; }
+
+    details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { color: var(--soft); margin: 10px 0 0; }
+    .tip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; background: var(--surface); border: 1px dashed var(--gold); border-radius: 10px; padding: 18px 22px; }
+    .tip p { margin: 0; color: var(--soft); flex: 1 1 20rem; }
+    .soon { font: 600 13px "Geist Mono", ui-monospace, monospace; color: var(--gold-ink); background: var(--gold-soft); border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
+    /* The backdrop: two faint glows, green low on the left and red high on the right like the meter's ends, over board traces */
+    .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+      background: radial-gradient(46% 40% at 8% 100%, var(--glow-a), transparent 72%),
+        radial-gradient(40% 34% at 96% 0%, var(--glow-b), transparent 72%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 46%); }
+    .ambient svg { position: absolute; inset: 0; width: 100%; height: 100%;
+      -webkit-mask-image: radial-gradient(90% 90% at 50% 0%, #000 20%, transparent 86%); mask-image: radial-gradient(90% 90% at 50% 0%, #000 20%, transparent 86%); }
+    footer { color: var(--soft); font-size: 14px; padding: 56px 0 40px; text-align: center; }
+    :focus-visible { outline: 2px solid var(--go); outline-offset: 3px; border-radius: 4px; }
+    @media (max-width: 560px) {
+      .step { padding-left: 22px; padding-top: 62px; } .hero { padding-top: 20px; }
+      .pcb::before { display: none; }
+      .readout { flex-direction: column; align-items: flex-start; } .readout .say { text-align: left; }
+    }
+    @media (prefers-reduced-motion: reduce) { .leds i { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice"><g id="traces" fill="none" stroke="var(--trace)" stroke-linecap="round"></g></svg></div>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./"><img src="assets/logo.svg" alt="" />Dedotated Wam</a>
+      <a class="gh" href="https://github.com/TheRealEminem/dedotated-wam">GitHub</a>
+    </header>
+
+    <div class="hero">
+      <h1>Closes apps before your Mac chokes</h1>
+      <p class="lead">Dedotated Wam puts live CPU and memory meters in your menu bar. When memory runs out, it closes apps for you,
+        in the order you chose, so your Mac never gets too stuck to close anything by hand.</p>
+      <a class="cta" href="https://github.com/TheRealEminem/dedotated-wam/releases/latest/download/DedotatedWam.dmg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        Download for Mac
+      </a>
+      <div class="meta">Free and open source · Apple silicon and Intel · macOS 14 or later · under 2 MB</div>
+
+      <div class="demo" role="img" aria-label="A demonstration: a memory meter fills from green to red, then drops back as apps are closed one at a time.">
+        <div class="readout" aria-hidden="true">
+          <div><div class="label">Memory</div><div class="num" id="num">62%</div></div>
+          <div class="say calm" id="say"><b>Calm.</b> Nothing to do.</div>
+        </div>
+        <div class="stick" aria-hidden="true">
+          <div class="pcb">
+            <div class="chips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="leds" id="leds"></div>
+          </div>
+          <div class="fingers"><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <p class="fine">A demonstration with made-up numbers. Yours show in the menu bar.</p>
+    </div>
+
+    <section id="install">
+      <h2>Install in three steps</h2>
+      <p class="sub">About a minute. Nothing else to install.</p>
+      <div class="steps">
+        <div class="step">
+          <h3>Open the download and drag Dedotated Wam to Applications</h3>
+          <p>Double-click <b>DedotatedWam.dmg</b> in your Downloads, then drag Dedotated Wam onto the Applications folder next to it.</p>
+        </div>
+        <div class="step">
+          <h3>Open it the first time with “Open Anyway”</h3>
+          <p>Open Dedotated Wam from Applications. macOS says it “can't verify” the app and offers only <b>Done</b> or <b>Move to Trash</b>: click <b>Done</b>. Then:</p>
+          <ol>
+            <li>Open <b>System Settings</b> (Apple menu) → <b>Privacy &amp; Security</b>.</li>
+            <li>Scroll down to <b>“Dedotated Wam” was blocked to protect your Mac</b> and click <b>Open Anyway</b>.</li>
+            <li>Enter your Mac password if asked, then click <b>Open Anyway</b> once more.</li>
+          </ol>
+          <p class="why">Why: the app isn't signed with a paid Apple developer certificate, so macOS asks you to confirm once.
+            If you prefer Terminal: <code>xattr -dr com.apple.quarantine "/Applications/Dedotated Wam.app"</code></p>
+        </div>
+        <div class="step">
+          <h3>Look up: the meters are in your menu bar</h3>
+          <p>There is no Dock icon and no window. Click the meters for the details, and <b>Settings…</b> there for everything else.
+            Closing apps for you is <b>off</b> until you turn it on. Try <b>Warn only</b> first: it tells you what it would have closed and touches nothing.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What it does</h2>
+      <p class="sub">Two jobs: show you how full the Mac is without opening Activity Monitor, and act when you no longer can.</p>
+      <div class="grid">
+        <div class="card"><h3>Meters in the menu bar</h3><p>CPU as a row of bars and memory as a capsule that fills, shaded by what the memory is doing. It turns orange, then red, as things get tight. Three layouts, from graphs with numbers down to a compact stack.</p></div>
+        <div class="card"><h3>The whole picture in one click</h3><p>Click the meters for the memory breakdown, swap, every CPU core and the biggest apps, with their helpers counted in. A browser is charged for its tabs.</p></div>
+        <div class="card"><h3>Closes apps when memory runs out</h3><p>First it asks apps to quit nicely, one at a time, with a pause between each. Only if memory turns critical does it force quit the ones you allowed that ignored the request.</p></div>
+        <div class="card"><h3>In the order you chose</h3><p>Apps sit in ordered groups, and each group says how its apps may be closed. Your installed apps are sorted into four suggested groups on first launch, ready to rearrange.</p></div>
+        <div class="card"><h3>Down to a single process</h3><p>Switch the list from apps to processes to find the one thing inside an app that holds the memory. A group can name a background process, and only that process is ended.</p></div>
+        <div class="card"><h3>Careful by default</h3><p>The app you are using is never closed. Small apps are skipped. Parts of macOS are protected, and quitting anything protected by hand takes a second, deliberate click.</p></div>
+        <div class="card"><h3>A battery meter too</h3><p>On a laptop, a battery meter sits beside the others, orange or red when it runs low, so you can switch the system's own icon off and save the space.</p></div>
+        <div class="card"><h3>There when it counts</h3><p>It can open at login, and it does its work off to the side, so it keeps going when the rest of the Mac has slowed to a crawl. Each time it closes something, a notification says what and why.</p></div>
+        <div class="card"><h3>Small and quiet</h3><p>It uses about 15 MB of memory while idle and never connects to the internet. Everything it closes is written to an activity log you can read afterwards.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>The order is yours</h2>
+      <p class="sub">Groups are worked through from the top. These are the four it suggests; rename them, add your own, or move any app between them.</p>
+      <ol class="ladder">
+        <li style="--c: var(--go)"><div><h3>Close first <span>quit nicely, force if stuck</span></h3><p>Things you won't miss for a minute, like chat apps that reopen right where they were.</p></div></li>
+        <li style="--c: var(--warn)"><div><h3>Close next <span>quit nicely, force if stuck</span></h3><p>Heavier apps you'd rather keep, such as browsers.</p></div></li>
+        <li style="--c: var(--stop)"><div><h3>Last resort <span>quit nicely only</span></h3><p>Apps likely to hold unsaved work. They are asked, and left alone if they stop to ask you about saving.</p></div></li>
+        <li style="--c: var(--soft)"><div><h3>Never close <span>never</span></h3><p>Finder, the pieces of macOS, and anything you put here.</p></div></li>
+      </ol>
+      <div class="two">
+        <div class="card"><h3>Stage 1: memory is tight</h3><p>Starts at 92% used, held for ten seconds. Apps are asked to quit, one at a time, and memory gets time to settle before the next.</p></div>
+        <div class="card"><h3>Stage 2: memory is critical</h3><p>Starts at 97% used, or when macOS itself says critical. Apps in a “force if stuck” group that ignored the request are force quit.</p></div>
+      </div>
+      <p class="sub" style="margin-top:18px">Every number here can be changed in Settings.</p>
+    </section>
+
+    <section>
+      <h2>See it</h2>
+      <p class="sub">The window behind the meters, on a calm day and on a bad one. The apps and numbers are made up.</p>
+      <div class="shots">
+        <figure><img src="assets/popover-calm.png" width="720" height="1462" loading="lazy" alt="The window with memory at 62 percent: a memory bar split into app, wired and compressed, a CPU graph, a battery bar, and a list of the biggest apps with the group each is in" /><figcaption>Calm: just the readings.</figcaption></figure>
+        <figure><img src="assets/popover-critical.png" width="720" height="1462" loading="lazy" alt="The same window with memory at 98 percent and a red Pressure: Critical badge. The bottom of the window says which apps go first and which was just force quit" /><figcaption>Critical: it says what goes first, and what it just did.</figcaption></figure>
+      </div>
+    </section>
+
+    <section>
+      <h2>Questions</h2>
+      <details><summary>What do I need?</summary><p>A Mac on macOS 14 or later. The download holds both the Apple silicon and the Intel version. It is built and used every day on an Apple silicon Mac with the newest macOS; the Intel version and older macOS versions have had much less use, so reports from those are welcome on GitHub.</p></details>
+      <details><summary>Will it close something I'm working in?</summary><p>Not the app in front: that one is never closed. Nothing is closed at all until you turn auto-close on, and <b>Warn only</b> lets you watch what it would do first. Apps asked to quit nicely can still stop to ask about unsaved work, the same as when you quit them yourself. A force quit loses unsaved work in that app, which is why it only happens to groups where you allowed it.</p></details>
+      <details><summary>Does anything leave my Mac?</summary><p>No. The app never connects to the internet. Your settings and the activity log are kept in <code>~/Library/Application Support/DedotatedWam</code>.</p></details>
+      <details><summary>How do updates work?</summary><p>By hand for now: download the newer version here and replace the app. Your settings stay. <a href="https://github.com/TheRealEminem/dedotated-wam/releases">All releases are on GitHub.</a></p></details>
+      <details><summary>The meters don't show up</summary><p>If the menu bar is full, macOS hides the newest items, and a menu bar manager may file new ones in its hidden section. Make room, or drag the meters out while holding Command. Until then, opening the app again from Applications brings up its Settings window.</p></details>
+      <details><summary>How do I remove it?</summary><p>Quit it from its window, then delete the app. Delete <code>~/Library/Application Support/DedotatedWam</code> as well if you want your settings gone.</p></details>
+      <details><summary>Why the name?</summary><p>It is an old internet joke about a server that needed more dedicated RAM, spelled the way it was said.</p></details>
+    </section>
+
+    <section>
+      <h2>Chip in</h2>
+      <div class="tip">
+        <p>Dedotated Wam is free and will stay free. If it saves you from a frozen Mac, a way to buy its maker a coffee is on the way.</p>
+        <span class="soon">Buy me a coffee · coming soon</span>
+      </div>
+    </section>
+
+    <footer>Dedotated Wam is free and open source (AGPL-3.0) · <a href="https://github.com/TheRealEminem/dedotated-wam">Source on GitHub</a> · <a href="https://github.com/TheRealEminem/dedotated-wam/releases">All releases</a><br />From the same maker: <a href="https://therealeminem.github.io/trailmix/">Trailmix</a> · <a href="https://therealeminem.github.io/TheLodge/">The Lodge</a> · <a href="https://therealeminem.github.io/Traverse/">Traverse</a></footer>
+  </div>
+  <script>
+    // The meter: 44 segments running green to red, like the app's own colours as memory fills.
+    const SEGMENTS = 44;
+    const leds = document.getElementById("leds"), num = document.getElementById("num"), say = document.getElementById("say");
+    for (let i = 0; i < SEGMENTS; i++) {
+      const t = i / (SEGMENTS - 1), led = document.createElement("i");
+      led.style.setProperty("--c", `hsl(${Math.round(146 - 141 * Math.pow(t, 1.35))} 92% ${Math.round(52 + 6 * Math.sin(t * Math.PI))}%)`);
+      leds.appendChild(led);
+    }
+    function show(percent) {
+      const lit = Math.round((percent / 100) * SEGMENTS);
+      for (let i = 0; i < SEGMENTS; i++) leds.children[i].classList.toggle("on", i < lit);
+      num.textContent = Math.round(percent) + "%";
+    }
+    function tell(tone, strong, rest) { say.className = "say " + tone; say.innerHTML = `<b>${strong}</b> ${rest}`; }
+
+    // One bad afternoon, on a loop: memory climbs, apps are asked to quit, one has to be forced, calm returns.
+    const story = [
+      { to: 62, ms: 1800, say: ["calm", "Calm.", "Nothing to do."] },
+      { to: 93, ms: 5200, say: ["calm", "Filling up.", "Still fine."] },
+      { to: 93, ms: 1800, say: ["warn", "Stage 1.", "Memory has been tight for ten seconds."] },
+      { to: 86, ms: 700, say: ["warn", "Asked Chat to quit.", "It did."] },
+      { to: 95, ms: 2600, say: ["warn", "Still climbing.", "Waiting for memory to settle."] },
+      { to: 90, ms: 700, say: ["warn", "Asked Browser to quit.", "No answer yet."] },
+      { to: 98, ms: 2400, say: ["stop", "Stage 2.", "Memory is critical."] },
+      { to: 98, ms: 1500, say: ["stop", "Force quit Browser.", "It ignored the request."] },
+      { to: 58, ms: 1100, say: ["calm", "Calm again.", "Two apps closed, both in the log."] },
+      { to: 62, ms: 3200, say: ["calm", "Calm.", "Nothing to do."] },
+    ];
+    show(62);
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      let step = 0, from = 62, began = performance.now();
+      tell(...story[0].say);
+      (function frame(now) {
+        const s = story[step], t = Math.min(1, (now - began) / s.ms);
+        const wobble = s.to === from ? 0 : Math.sin(now / 170) * 0.5;
+        show(from + (s.to - from) * t + wobble * (1 - t));
+        if (t >= 1) { from = s.to; step = (step + 1) % story.length; began = now; tell(...story[step].say); }
+        requestAnimationFrame(frame);
+      })(began);
+    }
+
+    // Board traces for the backdrop: runs with 45 degree jogs that end in a via, the same every visit.
+    let seed = 20;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    let traces = "";
+    for (let n = 0; n < 46; n++) {
+      let x = Math.round(rnd() * 80) * 20, y = rnd() < 0.5 ? -10 : Math.round(rnd() * 20) * 20;
+      let d = `M${x} ${y}`;
+      for (let leg = 0, legs = 2 + Math.floor(rnd() * 3); leg < legs; leg++) {
+        const run = 60 + Math.round(rnd() * 9) * 20;
+        y += run; d += `V${y}`;
+        const jog = (rnd() < 0.5 ? -1 : 1) * (20 + Math.round(rnd() * 3) * 20);
+        x += jog; y += Math.abs(jog); d += `L${x} ${y}`;
+      }
+      traces += `<path d="${d}" stroke-width="1.2" vector-effect="non-scaling-stroke"/><circle cx="${x}" cy="${y}" r="3.2" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+    }
+    document.getElementById("traces").innerHTML = traces;
+  </script>
+</body>
+</html>

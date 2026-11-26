@@ -4,6 +4,8 @@
 
 A macOS menu bar app that shows CPU and memory use as small live meters and, when memory runs out, closes apps for you in an order you choose, so the Mac never gets to the point where it is too choked to close anything by hand.
 
+**[Download it and see how it works](https://therealeminem.github.io/dedotated-wam/)**
+
 ## What it does
 
 - **Menu bar meters.** CPU as a row of bars (recent history, or one bar per core) and memory as a capsule that fills up, shaded by app, wired and compressed memory. The memory meter turns orange, then red, as memory gets tight. On a laptop a battery meter sits beside them (with a bolt while plugged in, orange or red when running low), so the system's own battery icon can be switched off. Three layouts: graphs with numbers, graphs only, compact stacked bars.
@@ -17,7 +19,7 @@ A macOS menu bar app that shows CPU and memory use as small live meters and, whe
 
 ## Install
 
-1. Download `DedotatedWam-<version>.dmg` from the [latest release](https://github.com/TheRealEminem/dedotated-wam/releases/latest). It runs on Apple silicon and Intel Macs with macOS 14 or later.
+1. Download [DedotatedWam.dmg](https://github.com/TheRealEminem/dedotated-wam/releases/latest/download/DedotatedWam.dmg), the latest release. It runs on Apple silicon and Intel Macs with macOS 14 or later.
 2. Open it and drag **Dedotated Wam** onto **Applications**, then open it from Applications.
 3. **First open only.** The app is signed without an Apple Developer ID, so macOS says it cannot verify it and offers only **Done** or **Move to Trash**. Click **Done**, then do one of these:
    - open **System Settings, Privacy & Security**, scroll down to *"Dedotated Wam" was blocked*, and press **Open Anyway** (then your Mac password, and **Open Anyway** once more), or
@@ -67,6 +69,7 @@ Scripts/build-app.sh --dmg
 | `Tests/WamCoreTests` | Tests for the triage rules, the process roll-up and the catalog. |
 | `Scripts/build-app.sh` | Builds and signs `build/Dedotated Wam.app`, and packs the disk image. |
 | `Scripts/drill.sh` | Live check that auto-close closes what it should and nothing else. |
+| `docs/` | The download page, served by GitHub Pages. |
 | `~/Library/Application Support/DedotatedWam` | Your settings and the activity log. Not in the repo. |
 
 ## Developer aids
@@ -88,6 +91,10 @@ Scripts/drill.sh
 ```
 
 is the live check of auto-close, worth running before a release. It builds three throwaway apps, opens them in the background, and runs the app's real monitor and closing code as if memory were critical, allowed to close only those targets. One app should quit when asked, a background process should be ended, an app that refuses to quit should be force quit, and an app that is in no rule should be left alone. Your own settings and activity log are not touched.
+
+## Support
+
+Dedotated Wam is free. A Buy Me a Coffee link is coming soon.
 
 ## License
 

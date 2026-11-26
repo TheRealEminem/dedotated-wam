@@ -4,6 +4,7 @@
 #   Scripts/build-app.sh --run       build, then (re)start the app from the build folder
 #   Scripts/build-app.sh --install   build, copy to /Applications, then (re)start it from there
 #   Scripts/build-app.sh --dmg       build for Apple silicon and Intel, and pack dist/DedotatedWam-<version>.dmg
+#                                    (plus a copy as dist/DedotatedWam.dmg; a release carries both and the .sha256)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -62,6 +63,8 @@ case "${1:-}" in
     hdiutil create -volname "$name" -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null
     rm -rf "$stage"
     (cd dist && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
+    # The download page links to this name, so the link never changes between versions.
+    cp "$dmg" dist/DedotatedWam.dmg
     echo "Packed $dmg ($(lipo -archs "$app/Contents/MacOS/DedotatedWam"))"
     ;;
 esac

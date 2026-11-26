@@ -35,6 +35,12 @@ macOS menu bar app: CPU and memory meters, plus automatic closing of apps under 
 - `--drill <bundle id | process:name> ...` runs the real monitor as if memory were critical, with in-memory settings that list only those targets. Use it through `Scripts/drill.sh`.
 - `WAM_DEBUG=1` prints where the status item landed, which tells "hidden by a menu bar manager" from "not drawn".
 
+## Download page and releases
+
+- `docs/` is the public download page (GitHub Pages, from `main`). One file, `docs/index.html`, with its own look: black circuit board, gold contacts, LED meter. Screenshots there must come from `--render-previews`, never from the live app, and never the Priorities tab, which lists the real installed apps.
+- The page's button links to `releases/latest/download/DedotatedWam.dmg`, so every release must carry that file as well as the versioned one and its `.sha256`. `Scripts/build-app.sh --dmg` makes all three.
+- Before a release: bump both versions in `Resources/Info.plist`, run `Scripts/test.sh` and `Scripts/drill.sh`, then build the disk image.
+
 ## CI
 
 None yet. If CI is added, it needs a macOS runner and should run `Scripts/test.sh` and `Scripts/build-app.sh`; a release should also run `Scripts/build-app.sh --dmg`. `Scripts/drill.sh` opens real apps, so it is a check for a Mac with a logged-in user, not for a runner.
