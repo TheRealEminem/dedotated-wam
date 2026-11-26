@@ -36,12 +36,15 @@ public struct Candidate: Sendable, Equatable, Identifiable {
     public var app: RunningApp
     public var groupName: String
     public var action: CloseAction
+    /// True when this is a single background process rather than a whole app.
+    public var isProcess: Bool
     public var id: pid_t { app.pid }
 
-    public init(app: RunningApp, groupName: String, action: CloseAction) {
+    public init(app: RunningApp, groupName: String, action: CloseAction, isProcess: Bool = false) {
         self.app = app
         self.groupName = groupName
         self.action = action
+        self.isProcess = isProcess
     }
 }
 
@@ -79,7 +82,12 @@ public enum TriagePlanner {
     }
 
     /// The order apps would be closed in: group by group, skipping anything protected.
-    public static func queue(settings: WamSettings, apps: [RunningApp], selfBundleID: String?) -> [Candidate] {
+    public static func queue(
+        settings: WamSettings,
+        apps: [RunningApp],
+        processes: [RunningProcess] = [],
+        selfBundleID: String?
+    ) -> [Candidate] {
         let minimum = UInt64(max(0, settings.minFootprintMB)) * 1_048_576
         let ownID = selfBundleID?.lowercased()
 
@@ -99,11 +107,11 @@ public enum TriagePlanner {
             return app.footprint >= minimum
         }
 
-        var perGroup: [[(app: RunningApp, rule: Int)]] = Array(repeating: [], count: settings.groups.count)
+        var perGroup: [[(app: RunningApp, rule: Int, process: Bool)]] = Array(repeating: [], count: settings.groups.count)
         var unlisted: [RunningApp] = []
         for app in apps where eligible(app) {
             if let key = app.bundleID?.lowercased(), let place = placement[key] {
-                perGroup[place.group].append((app, place.rule))
+                perGroup[place.group].append((app, place.rule, false))
             } else if app.isRegular, app.bundleID.flatMap({ AppCatalog.classify(bundleID: $0, category: nil) }) != .never {
                 // Not in any group. The catalog still gets a veto, so Finder and friends stay safe
                 // even when "apps in no group" are allowed to be closed.
@@ -111,9 +119,23 @@ public enum TriagePlanner {
             }
         }
 
+        // Background processes a rule names. Each one stands in the queue as itself, sized by
+        // everything it started, since that is what ending it frees.
+        for process in processes {
+            guard let place = placement[AppRule.processPrefix + process.name.lowercased()] else { continue }
+            guard process.pid > 1, process.pid != getpid(), !process.isProtected else { continue }
+            if settings.protectFrontmost && process.isOwnerFrontmost { continue }
+            guard process.treeFootprint >= minimum else { continue }
+            let stand = RunningApp(
+                pid: process.pid, bundleID: nil, name: process.displayName,
+                footprint: process.treeFootprint, isFrontmost: false, isRegular: false
+            )
+            perGroup[place.group].append((stand, place.rule, true))
+        }
+
         var result: [Candidate] = []
         for (index, group) in settings.groups.enumerated() where group.action != .never {
-            let members: [(app: RunningApp, rule: Int)]
+            let members: [(app: RunningApp, rule: Int, process: Bool)]
             switch group.order {
             case .listOrder:
                 members = perGroup[index].sorted {
@@ -124,7 +146,7 @@ public enum TriagePlanner {
                     $0.app.footprint != $1.app.footprint ? $0.app.footprint > $1.app.footprint : $0.app.pid < $1.app.pid
                 }
             }
-            result += members.map { Candidate(app: $0.app, groupName: group.name, action: group.action) }
+            result += members.map { Candidate(app: $0.app, groupName: group.name, action: group.action, isProcess: $0.process) }
         }
         if settings.unlistedPolicy == .lastResort {
             result += unlisted
@@ -162,6 +184,7 @@ public struct TriageEngine: Sendable {
         settings: WamSettings,
         memory: MemorySample,
         apps: [RunningApp],
+        processes: [RunningProcess] = [],
         selfBundleID: String?
     ) -> TriageDecision {
         let instant = TriagePlanner.instantStage(settings: settings, memory: memory)
@@ -182,13 +205,13 @@ public struct TriageEngine: Sendable {
         let stage = sustainedStage(now: now, settings: settings)
         guard stage >= .soft, settings.mode != .off else { return .none }
 
-        let running = Set(apps.map(\.pid))
+        let running = Set(apps.map(\.pid)).union(processes.map(\.pid))
         pendingPolite = pendingPolite.filter { running.contains($0.key) }
 
         let cooldown = stage == .hard ? max(3, settings.cooldownSeconds / 3) : settings.cooldownSeconds
         if let lastActionAt, now.timeIntervalSince(lastActionAt) < cooldown { return .none }
 
-        for candidate in TriagePlanner.queue(settings: settings, apps: apps, selfBundleID: selfBundleID) {
+        for candidate in TriagePlanner.queue(settings: settings, apps: apps, processes: processes, selfBundleID: selfBundleID) {
             let method: CloseMethod
             let askedAt = pendingPolite[candidate.app.pid]
             switch candidate.action {

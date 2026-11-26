@@ -32,6 +32,11 @@ enum PreviewRenderer {
             let view = PopoverView(monitor: monitor, store: store, log: log, openSettings: {}, confirmingPid: protected.pid)
             render(view, dark: true, to: directory.appendingPathComponent("popover-confirm.png"))
         }
+        render(
+            PopoverView(monitor: monitor, store: store, log: log, openSettings: {}, startOnProcesses: true),
+            dark: false,
+            to: directory.appendingPathComponent("popover-processes.png")
+        )
         for (index, name) in ["settings-general", "settings-autoclose", "settings-priorities", "settings-activity"].enumerated() {
             let view = SettingsView(monitor: monitor, store: store, log: log, tab: index)
             render(view, dark: false, to: directory.appendingPathComponent("\(name).png"))
@@ -79,7 +84,17 @@ enum PreviewRenderer {
             RunningApp(pid: pid_t(1000 + index), bundleID: pair.0.bundleID, name: pair.0.name, footprint: pair.1 << 20, isFrontmost: index == 1, isRegular: true)
         }
         .sorted { $0.footprint > $1.footprint }
-        snapshot.queue = TriagePlanner.queue(settings: settings, apps: snapshot.apps, selfBundleID: AppPaths.bundleID)
+        let first = snapshot.apps.first
+        snapshot.processes = [
+            RunningProcess(pid: 2001, name: "example-model-runner", footprint: 2900 << 20, treeFootprint: 2900 << 20),
+            RunningProcess(pid: 2002, name: "Browser Helper (Renderer)", footprint: 1300 << 20, treeFootprint: 1300 << 20, ownerPid: first?.pid, ownerName: first?.name),
+            RunningProcess(pid: 2003, name: "node", footprint: 940 << 20, treeFootprint: 1200 << 20, ownerPid: first?.pid, ownerName: "Terminal"),
+            RunningProcess(pid: 2004, name: "WindowServer", footprint: 610 << 20, treeFootprint: 610 << 20, isProtected: true),
+            RunningProcess(pid: first?.pid ?? 2005, name: first?.name ?? "App", footprint: 480 << 20, treeFootprint: 3200 << 20, ownerPid: first?.pid, ownerName: first?.name, isAppMain: true),
+            RunningProcess(pid: 2006, name: "python3.12", footprint: 350 << 20, treeFootprint: 350 << 20, ownerPid: first?.pid, ownerName: "Terminal"),
+            RunningProcess(pid: 2007, name: "mds_stores", footprint: 220 << 20, treeFootprint: 220 << 20, isProtected: true),
+        ]
+        snapshot.queue = TriagePlanner.queue(settings: settings, apps: snapshot.apps, processes: snapshot.processes, selfBundleID: AppPaths.bundleID)
         return snapshot
     }
 

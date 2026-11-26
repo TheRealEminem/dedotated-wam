@@ -103,6 +103,19 @@ public struct AppRule: Codable, Identifiable, Hashable, Sendable {
         self.bundleID = bundleID
         self.name = name
     }
+
+    /// A rule can name a background process instead of an app. It is stored with this prefix in
+    /// `bundleID`, so every lookup stays keyed the same way and old settings files still load.
+    public static let processPrefix = "process:"
+
+    public static func process(named name: String) -> AppRule {
+        AppRule(bundleID: processPrefix + name, name: name)
+    }
+
+    /// The executable name this rule matches, or nil for an ordinary app rule.
+    public var processName: String? {
+        bundleID.hasPrefix(Self.processPrefix) ? String(bundleID.dropFirst(Self.processPrefix.count)) : nil
+    }
 }
 
 /// A named set of apps that are closed together, in order, before the next group is touched.

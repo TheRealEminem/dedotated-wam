@@ -282,6 +282,129 @@ private let running = [
     }
 }
 
+@Suite struct ProcessRuleTests {
+    private func rules() -> WamSettings {
+        var custom = settings()
+        custom.groups[0].apps.append(AppRule.process(named: "node"))
+        custom.groups[1].apps.append(AppRule.process(named: "model-runner"))
+        return custom
+    }
+
+    private let loose = [
+        RunningProcess(pid: 50, name: "node", footprint: 200 * mb, treeFootprint: 700 * mb, ownerPid: 9, ownerName: "Terminal"),
+        RunningProcess(pid: 51, name: "Node", footprint: 150 * mb, treeFootprint: 150 * mb, ownerPid: 9, ownerName: "Terminal"),
+        RunningProcess(pid: 52, name: "model-runner", footprint: 5000 * mb, treeFootprint: 5000 * mb),
+        RunningProcess(pid: 53, name: "unruled", footprint: 9000 * mb, treeFootprint: 9000 * mb),
+    ]
+
+    @Test func ruleHelpers() {
+        let rule = AppRule.process(named: "node")
+        #expect(rule.processName == "node")
+        #expect(rule.name == "node")
+        #expect(AppRule(bundleID: "com.apple.Safari", name: "Safari").processName == nil)
+    }
+
+    @Test func ruledProcessesJoinTheirGroupsQueue() {
+        let queue = TriagePlanner.queue(settings: rules(), apps: running, processes: loose, selfBundleID: nil)
+        // Group one is list order: music, chat, then the node rule (bigger tree first).
+        // Group two is biggest first: the 5 GB runner outranks the 3 GB browser.
+        #expect(queue.map(\.app.pid) == [2, 1, 50, 51, 52, 4, 3])
+        #expect(queue.filter(\.isProcess).map(\.app.pid) == [50, 51, 52])
+        #expect(queue.first { $0.app.pid == 50 }?.app.name == "node (in Terminal)")
+        // Sized by everything it started.
+        #expect(queue.first { $0.app.pid == 50 }?.app.footprint == 700 * mb)
+        #expect(!queue.map(\.app.pid).contains(53))
+    }
+
+    @Test func protectedAndFrontmostProcessesAreSkipped() {
+        var processes = loose
+        processes[2].isProtected = true
+        processes[0].isOwnerFrontmost = true
+        let pids = TriagePlanner.queue(settings: rules(), apps: running, processes: processes, selfBundleID: nil).map(\.app.pid)
+        #expect(!pids.contains(52))
+        #expect(!pids.contains(50))
+        #expect(pids.contains(51))
+    }
+
+    @Test func smallProcessTreesAreSkipped() {
+        var custom = rules()
+        custom.minFootprintMB = 500
+        let pids = TriagePlanner.queue(settings: custom, apps: [], processes: loose, selfBundleID: nil).map(\.app.pid)
+        #expect(pids == [50, 52])
+    }
+
+    @Test func engineEndsAProcessAndRemembersAskingIt() {
+        var engine = TriageEngine()
+        let start = Date(timeIntervalSince1970: 2_000_000)
+        var custom = WamSettings()
+        custom.mode = .armed
+        custom.groups = [TriageGroup(name: "Jobs", action: .politeThenForce, order: .largestFirst, apps: [AppRule.process(named: "model-runner")])]
+        let critical = memory(usedPercent: 98, pressure: .critical)
+        var methods: [CloseMethod] = []
+        var alive = loose
+        for second in stride(from: 0.0, through: 60, by: 1) {
+            if case .close(let candidate, let method) = engine.tick(now: start + second, settings: custom, memory: critical, apps: [], processes: alive, selfBundleID: nil) {
+                #expect(candidate.app.pid == 52)
+                #expect(candidate.isProcess)
+                methods.append(method)
+                // It ignores the polite request and only dies when forced.
+                if method == .force { alive.removeAll { $0.pid == candidate.app.pid } }
+            }
+        }
+        #expect(methods == [.polite, .force])
+    }
+
+    @Test func describePicksTheBiggestPlusRuledNames() {
+        let entries = [
+            ProcessEntry(pid: 100, ppid: 1, responsiblePid: 100, footprint: 500, name: "Browser"),
+            ProcessEntry(pid: 101, ppid: 100, responsiblePid: 100, footprint: 300, name: "Browser Helper"),
+            ProcessEntry(pid: 102, ppid: 101, responsiblePid: 100, footprint: 40, name: "gpu"),
+            ProcessEntry(pid: 300, ppid: 1, responsiblePid: 300, footprint: 900, name: "daemon"),
+            ProcessEntry(pid: 400, ppid: 1, responsiblePid: 400, footprint: 5, name: "tiny-job"),
+            ProcessEntry(pid: 500, ppid: 1, responsiblePid: 500, footprint: 4, name: "noise"),
+        ]
+        let described = ProcessScanner.describe(
+            processes: entries,
+            units: [100: true],
+            owners: [100: ProcessOwner(name: "Browser", isFrontmost: true)],
+            ruleNames: ["tiny-job"],
+            top: 3,
+            pathLookup: { $0 == 300 ? "/usr/libexec/daemon" : "/Applications/X.app/Contents/MacOS/x" }
+        )
+        // The three biggest, plus the ruled name; "gpu" and "noise" are left out.
+        #expect(described.map(\.pid) == [300, 100, 101, 400])
+        let main = described.first { $0.pid == 100 }!
+        #expect(main.isAppMain)
+        #expect(main.treeFootprint == 840)
+        let helper = described.first { $0.pid == 101 }!
+        #expect(!helper.isAppMain)
+        #expect(helper.ownerName == "Browser")
+        #expect(helper.isOwnerFrontmost)
+        #expect(helper.treeFootprint == 340)
+        #expect(helper.displayName == "Browser Helper (in Browser)")
+        // Lives in a system folder.
+        #expect(described.first { $0.pid == 300 }!.isProtected)
+        #expect(described.first { $0.pid == 300 }!.ownerPid == nil)
+        #expect(!described.first { $0.pid == 400 }!.isProtected)
+    }
+
+    @Test func systemProcessesAreProtected() {
+        #expect(ProcessCatalog.isProtected(name: "WindowServer", path: nil))
+        #expect(ProcessCatalog.isProtected(name: "Finder", path: nil))
+        #expect(ProcessCatalog.isProtected(name: "anything", path: "/System/Library/CoreServices/x"))
+        #expect(ProcessCatalog.isProtected(name: "anything", path: "/usr/libexec/x"))
+        #expect(!ProcessCatalog.isProtected(name: "node", path: "/opt/homebrew/bin/node"))
+        #expect(!ProcessCatalog.isProtected(name: "python3", path: "/usr/bin/python3"))
+        #expect(!ProcessCatalog.isProtected(name: "ollama", path: nil))
+    }
+
+    @Test func processRulesSurviveSavingAndLoading() throws {
+        let original = rules()
+        let decoded = try JSONDecoder().decode(WamSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded.groups[0].apps.last?.processName == "node")
+    }
+}
+
 @Suite struct SamplerTests {
     @Test func memoryNumbersAreSane() {
         let sample = MemorySampler.sample()

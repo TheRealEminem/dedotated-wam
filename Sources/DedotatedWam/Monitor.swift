@@ -13,6 +13,8 @@ struct Snapshot {
     var battery: BatterySample?
     /// Running apps, biggest first.
     var apps: [RunningApp] = []
+    /// The biggest individual processes, plus any that a rule names.
+    var processes: [RunningProcess] = []
     var cpuHistory: [Double] = []
     var memoryHistory: [Double] = []
     /// Where memory is right now.
@@ -49,6 +51,7 @@ final class Monitor: ObservableObject {
     private var cpuHistory: [Double] = []
     private var memoryHistory: [Double] = []
     private var apps: [RunningApp] = []
+    private var processes: [RunningProcess] = []
     private var lastAppScan = Date.distantPast
     private var lastFrontmost: pid_t = 0
     private var battery: BatterySample?
@@ -105,11 +108,11 @@ final class Monitor: ObservableObject {
         // Walking every process is the expensive part, so it only runs every tick when it matters.
         let instant = TriagePlanner.instantStage(settings: settings, memory: memory)
         if detailed || instant >= .soft || now.timeIntervalSince(lastAppScan) >= 6 {
-            apps = scanApps()
+            (apps, processes) = scan(settings: settings)
             lastAppScan = now
         }
 
-        let decision = engine.tick(now: now, settings: settings, memory: memory, apps: apps, selfBundleID: AppPaths.bundleID)
+        let decision = engine.tick(now: now, settings: settings, memory: memory, apps: apps, processes: processes, selfBundleID: AppPaths.bundleID)
         act(on: decision, memory: memory, settings: settings)
 
         let snapshot = Snapshot(
@@ -117,11 +120,12 @@ final class Monitor: ObservableObject {
             memory: memory,
             battery: battery,
             apps: apps,
+            processes: processes,
             cpuHistory: cpuHistory,
             memoryHistory: memoryHistory,
             instantStage: instant,
             stage: engine.sustainedStage(now: now, settings: settings),
-            queue: TriagePlanner.queue(settings: settings, apps: apps, selfBundleID: AppPaths.bundleID)
+            queue: TriagePlanner.queue(settings: settings, apps: apps, processes: processes, selfBundleID: AppPaths.bundleID)
         )
         DispatchQueue.main.async { [weak self] in
             self?.snapshot = snapshot
@@ -133,7 +137,13 @@ final class Monitor: ObservableObject {
         }
     }
 
+    /// Apps only, for callers that do not need the per-process view.
     func scanApps() -> [RunningApp] {
+        scan(settings: store.current).apps
+    }
+
+    /// One pass over every process, read two ways: rolled up into apps, and one by one.
+    func scan(settings: WamSettings) -> (apps: [RunningApp], processes: [RunningProcess]) {
         let running = NSWorkspace.shared.runningApplications
         let ownPid = ProcessInfo.processInfo.processIdentifier
         // When our own popover is in front, the app the user was just in is the one to protect.
@@ -145,23 +155,36 @@ final class Monitor: ObservableObject {
         for app in running where app.activationPolicy != .prohibited {
             units[app.processIdentifier] = app.activationPolicy == .regular
         }
-        let totals = ProcessScanner.footprintByApp(processes: ProcessScanner.scan(), units: units)
+        let entries = ProcessScanner.scan()
+        let totals = ProcessScanner.footprintByApp(processes: entries, units: units)
 
-        var result: [RunningApp] = []
-        result.reserveCapacity(totals.count)
+        var apps: [RunningApp] = []
+        var owners: [pid_t: ProcessOwner] = [:]
+        apps.reserveCapacity(totals.count)
         for app in running {
             let pid = app.processIdentifier
             guard let footprint = totals[pid] else { continue }
-            result.append(RunningApp(
+            let name = app.localizedName ?? app.bundleIdentifier ?? "pid \(pid)"
+            owners[pid] = ProcessOwner(name: name, isFrontmost: pid == lastFrontmost)
+            apps.append(RunningApp(
                 pid: pid,
                 bundleID: app.bundleIdentifier,
-                name: app.localizedName ?? app.bundleIdentifier ?? "pid \(pid)",
+                name: name,
                 footprint: footprint,
                 isFrontmost: pid == lastFrontmost,
                 isRegular: app.activationPolicy == .regular
             ))
         }
-        return result.sorted { $0.footprint != $1.footprint ? $0.footprint > $1.footprint : $0.pid < $1.pid }
+        apps.sort { $0.footprint != $1.footprint ? $0.footprint > $1.footprint : $0.pid < $1.pid }
+
+        var ruleNames = Set<String>()
+        for group in settings.groups {
+            for rule in group.apps {
+                if let name = rule.processName { ruleNames.insert(name.lowercased()) }
+            }
+        }
+        let processes = ProcessScanner.describe(processes: entries, units: units, owners: owners, ruleNames: ruleNames, top: 40)
+        return (apps, processes)
     }
 
     private func act(on decision: TriageDecision, memory: MemorySample, settings: WamSettings) {

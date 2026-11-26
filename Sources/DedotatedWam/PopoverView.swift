@@ -38,6 +38,8 @@ struct PopoverView: View {
     var openSettings: () -> Void
     /// Preview rendering only: shows this app's row already asking for confirmation.
     var confirmingPid: pid_t?
+    /// Preview rendering only: opens the list on Processes.
+    var startOnProcesses = false
 
     private var snapshot: Snapshot { monitor.snapshot }
 
@@ -49,7 +51,7 @@ struct PopoverView: View {
             if let battery = snapshot.battery {
                 BatteryCard(battery: battery)
             }
-            AppsCard(snapshot: snapshot, settings: store.settings, log: log, confirmingPid: confirmingPid)
+            AppsCard(snapshot: snapshot, settings: store.settings, log: log, confirmingPid: confirmingPid, showProcesses: startOnProcesses)
             AutoCloseCard(snapshot: snapshot, store: store, lastEntry: log.entries.first)
             footer
         }
@@ -250,63 +252,126 @@ private struct AppsCard: View {
     var settings: WamSettings
     var log: ActivityLog
     var confirmingPid: pid_t?
+    /// False lists apps with their helpers rolled in; true lists every process on its own.
+    @Local var showProcesses = false
 
     var body: some View {
-        let apps = Array(snapshot.apps.prefix(7))
-        let largest = max(1, apps.first?.footprint ?? 1)
         Card {
             HStack {
-                Text("Biggest apps")
+                Text("Biggest")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                 Spacer()
-                Text("includes helper processes")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                Picker("Show", selection: $showProcesses) {
+                    Text("Apps").tag(false)
+                    Text("Processes").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.mini)
+                .fixedSize()
             }
-            if apps.isEmpty {
+            if snapshot.apps.isEmpty {
                 Text("Reading processes…")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             VStack(spacing: 1) {
-                ForEach(apps) { app in
-                    AppRow(
-                        app: app,
-                        group: group(for: app),
-                        isProtected: settings.isProtected(bundleID: app.bundleID),
-                        share: Double(app.footprint) / Double(largest),
-                        log: log,
-                        pending: app.pid == confirmingPid ? .polite : nil
-                    )
+                if showProcesses {
+                    processRows
+                } else {
+                    appRows
                 }
             }
+            Text(showProcesses
+                ? "Each process on its own. Ending one inside an app can break that app."
+                : "Each app includes its helper processes.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
     }
 
-    private func group(for app: RunningApp) -> TriageGroup? {
-        guard let bundleID = app.bundleID, let index = settings.groupIndex(forBundleID: bundleID) else { return nil }
+    @ViewBuilder private var appRows: some View {
+        let apps = Array(snapshot.apps.prefix(7))
+        let largest = max(1, apps.first?.footprint ?? 1)
+        ForEach(apps) { app in
+            let group = group(forBundleID: app.bundleID)
+            ClosableRow(
+                pid: app.pid,
+                name: app.name,
+                bundleID: app.bundleID,
+                icon: IconCache.icon(bundleID: app.bundleID, pid: app.pid),
+                caption: nil,
+                tag: group.map { ($0.name, Palette.action($0.action)) },
+                footprint: app.footprint,
+                isProtected: settings.isProtected(bundleID: app.bundleID),
+                share: Double(app.footprint) / Double(largest),
+                log: log,
+                pending: app.pid == confirmingPid ? .polite : nil
+            )
+        }
+    }
+
+    @ViewBuilder private var processRows: some View {
+        let processes = Array(snapshot.processes.prefix(8))
+        let largest = max(1, processes.first?.footprint ?? 1)
+        ForEach(processes) { process in
+            let group = group(forBundleID: AppRule.processPrefix + process.name)
+            ClosableRow(
+                pid: process.pid,
+                name: process.name,
+                bundleID: nil,
+                // An app's own main process wears the app's icon; anything else gets a gear.
+                icon: process.isAppMain ? IconCache.icon(bundleID: nil, pid: process.pid) : nil,
+                caption: process.isAppMain ? nil : process.ownerName.map { "in \($0)" },
+                tag: group.map { ($0.name, Palette.action($0.action)) },
+                footprint: process.footprint,
+                isProtected: process.isProtected,
+                share: Double(process.footprint) / Double(largest),
+                log: log,
+                pending: process.pid == confirmingPid ? .polite : nil
+            )
+        }
+    }
+
+    private func group(forBundleID bundleID: String?) -> TriageGroup? {
+        guard let bundleID, let index = settings.groupIndex(forBundleID: bundleID) else { return nil }
         return settings.groups[index]
     }
 }
 
-private struct AppRow: View {
-    var app: RunningApp
-    var group: TriageGroup?
-    /// Protected apps can still be quit from here, but only after a second, explicit click.
+/// One line in the "Biggest" list: an app or a single process, with quit buttons on hover.
+private struct ClosableRow: View {
+    var pid: pid_t
+    var name: String
+    var bundleID: String?
+    /// Nil draws a gear, for processes that are not an app.
+    var icon: NSImage?
+    /// Small grey text after the name, such as the app a process lives in.
+    var caption: String?
+    var tag: (text: String, color: Color)?
+    var footprint: UInt64
+    /// Protected rows can still be quit from here, but only after a second, explicit click.
     var isProtected: Bool
     var share: Double
     var log: ActivityLog
-    /// The quit the user has asked for on a protected app and not yet confirmed.
+    /// The quit the user has asked for on a protected row and not yet confirmed.
     @Local var pending: CloseMethod?
     @Local private var hovering = false
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(nsImage: IconCache.icon(bundleID: app.bundleID, pid: app.pid))
-                .resizable()
-                .frame(width: 18, height: 18)
+            if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+            }
             if let pending {
                 confirmation(for: pending)
             } else {
@@ -332,23 +397,31 @@ private struct AppRow: View {
     }
 
     @ViewBuilder private var details: some View {
-        Text(app.name)
+        Text(name)
             .font(.system(size: 12))
             .lineLimit(1)
-            .truncationMode(.tail)
+            .truncationMode(.middle)
         if isProtected {
             Image(systemName: "lock.fill")
                 .font(.system(size: 8))
                 .foregroundStyle(.tertiary)
                 .help("Protected. Quitting it from here asks first.")
         }
-        if let group {
-            Text(group.name)
+        if let caption {
+            Text(caption)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
+        }
+        if let tag {
+            Text(tag.text)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Palette.action(group.action))
+                .foregroundStyle(tag.color)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1.5)
-                .background(Palette.action(group.action).opacity(0.13), in: Capsule())
+                .background(tag.color.opacity(0.13), in: Capsule())
                 .lineLimit(1)
                 .fixedSize()
         }
@@ -359,17 +432,17 @@ private struct AppRow: View {
             } label: {
                 Image(systemName: "xmark.circle")
             }
-            .help(isProtected ? "Quit \(app.name). It is protected, so you will be asked to confirm." : "Quit \(app.name)")
+            .help(isProtected ? "Quit \(name). It is protected, so you will be asked to confirm." : "Quit \(name)")
             Button {
                 request(.force)
             } label: {
                 Image(systemName: "bolt.circle")
             }
             .help(isProtected
-                ? "Force quit \(app.name). It is protected, so you will be asked to confirm."
-                : "Force quit \(app.name). Unsaved work in it is lost.")
+                ? "Force quit \(name). It is protected, so you will be asked to confirm."
+                : "Force quit \(name). Unsaved work in it is lost.")
         }
-        Text(ByteFormat.string(app.footprint))
+        Text(ByteFormat.string(footprint))
             .font(.system(size: 11).monospacedDigit())
             .foregroundStyle(.secondary)
             .frame(minWidth: 58, alignment: .trailing)
@@ -380,7 +453,7 @@ private struct AppRow: View {
             .font(.system(size: 10))
             .foregroundStyle(Color(nsColor: .systemOrange))
         VStack(alignment: .leading, spacing: 0) {
-            Text("\(app.name) is protected")
+            Text("\(name) is protected")
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -411,15 +484,15 @@ private struct AppRow: View {
     }
 
     private func close(_ method: CloseMethod, confirmed: Bool) {
-        let succeeded = Closer.close(pid: app.pid, method: method)
+        let succeeded = Closer.close(pid: pid, method: method)
         log.add(LogEntry(
             kind: .manual,
-            appName: app.name,
-            bundleID: app.bundleID,
+            appName: name,
+            bundleID: bundleID,
             method: method,
             succeeded: succeeded,
-            footprint: app.footprint,
-            detail: confirmed ? "From the menu bar popover, after confirming (protected app)." : "From the menu bar popover."
+            footprint: footprint,
+            detail: confirmed ? "From the menu bar popover, after confirming (protected)." : "From the menu bar popover."
         ))
     }
 }

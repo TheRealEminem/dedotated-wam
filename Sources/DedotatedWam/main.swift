@@ -73,12 +73,16 @@ if arguments.contains("--print-snapshot") {
     print("memory: \(ByteFormat.string(memory.used)) of \(ByteFormat.string(memory.total)) (\(memory.usedPercent)%)"
         + " | app \(ByteFormat.string(memory.app)), wired \(ByteFormat.string(memory.wired)), compressed \(ByteFormat.string(memory.compressed)), cached \(ByteFormat.string(memory.cached))"
         + " | swap \(ByteFormat.string(memory.swapUsed)) | pressure \(memory.pressure.label)")
-    let apps = Monitor(store: store, log: ActivityLog(persist: false)).scanApps()
+    let (apps, processes) = Monitor(store: store, log: ActivityLog(persist: false)).scan(settings: store.settings)
     for app in apps.prefix(15) {
         let group = app.bundleID.flatMap { store.settings.groupIndex(forBundleID: $0) }.map { store.settings.groups[$0].name } ?? "-"
         print("  \(ByteFormat.string(app.footprint).padding(toLength: 9, withPad: " ", startingAt: 0)) \(app.name) [\(group)]\(app.isRegular ? "" : " (background)")")
     }
-    let queue = TriagePlanner.queue(settings: store.settings, apps: apps, selfBundleID: AppPaths.bundleID)
+    print("biggest single processes:")
+    for process in processes.prefix(12) {
+        print("  \(ByteFormat.string(process.footprint).padding(toLength: 9, withPad: " ", startingAt: 0)) \(process.displayName)\(process.isProtected ? " [protected]" : "")")
+    }
+    let queue = TriagePlanner.queue(settings: store.settings, apps: apps, processes: processes, selfBundleID: AppPaths.bundleID)
     print("would close, in order: " + queue.prefix(8).map(\.app.name).joined(separator: ", "))
     exit(0)
 }

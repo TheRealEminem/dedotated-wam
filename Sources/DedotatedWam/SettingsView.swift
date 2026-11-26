@@ -214,7 +214,7 @@ private struct PrioritiesTab: View {
                     Section {
                         let visible = group.apps.filter(matches)
                         ForEach(visible) { rule in
-                            RuleRow(rule: rule, running: runningByBundleID[rule.bundleID.lowercased()], currentGroup: group.id, store: store)
+                            RuleRow(rule: rule, runningText: runningText(for: rule), currentGroup: group.id, store: store)
                         }
                         .onMove { source, destination in
                             guard search.isEmpty else { return }
@@ -231,7 +231,7 @@ private struct PrioritiesTab: View {
                 }
                 Section {
                     ForEach(unsorted, id: \.bundleID) { app in
-                        RuleRow(rule: AppRule(bundleID: app.bundleID, name: app.name), running: runningByBundleID[app.bundleID.lowercased()], currentGroup: nil, store: store)
+                        RuleRow(rule: AppRule(bundleID: app.bundleID, name: app.name), runningText: runningText(for: AppRule(bundleID: app.bundleID, name: app.name)), currentGroup: nil, store: store)
                     }
                     if unsorted.isEmpty {
                         Text("Every app found is in a group.")
@@ -240,6 +240,24 @@ private struct PrioritiesTab: View {
                     }
                 } header: {
                     Text("Not in any group (\(store.settings.unlistedPolicy == .ignore ? "left alone" : "quit nicely last"))")
+                }
+                Section {
+                    ForEach(looseProcesses, id: \.name) { process in
+                        RuleRow(
+                            rule: AppRule.process(named: process.name),
+                            runningText: "\(process.count > 1 ? "\(process.count) running" : "running") · \(ByteFormat.string(process.total))"
+                                + (process.owner.map { " · in \($0)" } ?? ""),
+                            currentGroup: nil,
+                            store: store
+                        )
+                    }
+                    if looseProcesses.isEmpty {
+                        Text("No sizeable background processes right now.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                } header: {
+                    Text("Background processes running now (add one to a group to let it be ended on its own)")
                 }
             }
             .listStyle(.inset)
@@ -263,6 +281,36 @@ private struct PrioritiesTab: View {
         } message: {
             Text("Your current groups and their order are discarded.")
         }
+    }
+
+    private func runningText(for rule: AppRule) -> String? {
+        if let processName = rule.processName {
+            let matches = monitor.snapshot.processes.filter { $0.name.caseInsensitiveCompare(processName) == .orderedSame }
+            guard !matches.isEmpty else { return nil }
+            let total = matches.reduce(UInt64(0)) { $0 + $1.footprint }
+            return "\(matches.count > 1 ? "\(matches.count) running" : "running") · \(ByteFormat.string(total))"
+        }
+        return runningByBundleID[rule.bundleID.lowercased()].map { "running · \(ByteFormat.string($0.footprint))" }
+    }
+
+    /// Processes that are not an app's main process, are not part of macOS and are in no group yet,
+    /// added up by name.
+    private var looseProcesses: [(name: String, count: Int, total: UInt64, owner: String?)] {
+        var totals: [String: (name: String, count: Int, total: UInt64, owner: String?)] = [:]
+        for process in monitor.snapshot.processes where !process.isAppMain && !process.isProtected {
+            guard store.settings.groupIndex(forBundleID: AppRule.processPrefix + process.name) == nil else { continue }
+            let key = process.name.lowercased()
+            var entry = totals[key] ?? (process.name, 0, 0, process.ownerName)
+            entry.count += 1
+            entry.total += process.footprint
+            if entry.owner != process.ownerName { entry.owner = nil }
+            totals[key] = entry
+        }
+        return totals.values
+            .filter { $0.total >= 50 << 20 && matches(AppRule.process(named: $0.name)) }
+            .sorted { $0.total > $1.total }
+            .prefix(12)
+            .map { $0 }
     }
 
     private var runningByBundleID: [String: RunningApp] {
@@ -356,25 +404,33 @@ private struct GroupHeader: View {
 
 private struct RuleRow: View {
     var rule: AppRule
-    var running: RunningApp?
+    /// "running · 1.2 GB", or nil when it is not running.
+    var runningText: String?
     var currentGroup: UUID?
     @ObservedObject var store: SettingsStore
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(nsImage: IconCache.icon(bundleID: rule.bundleID))
-                .resizable()
-                .frame(width: 20, height: 20)
+            if rule.processName == nil {
+                Image(nsImage: IconCache.icon(bundleID: rule.bundleID))
+                    .resizable()
+                    .frame(width: 20, height: 20)
+            } else {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(rule.name).font(.system(size: 12))
-                Text(rule.bundleID)
+                Text(rule.processName == nil ? rule.bundleID : "background process, matched by name")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
             Spacer()
-            if let running {
-                Text("running · \(ByteFormat.string(running.footprint))")
+            if let runningText {
+                Text(runningText)
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(.secondary)
             }

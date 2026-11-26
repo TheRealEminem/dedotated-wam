@@ -10,6 +10,7 @@ A macOS menu bar app that shows CPU and memory use as small live meters and, whe
   - **Stage 1** (memory tight): asks apps to quit nicely, one at a time, with a pause between each.
   - **Stage 2** (memory critical): apps in a "force if stuck" group that ignored the polite request are force quit.
 - **Priorities.** Apps are sorted into ordered groups. Each group sets how its apps are closed (nicely only, nicely then force, force at once, never) and in what order (list order or biggest first). On first launch the installed apps are sorted into four suggested groups from a built-in catalog: *Close first*, *Close next*, *Last resort*, *Never close*.
+- **Background processes.** The popover can switch from apps to single processes, so you can see and end the one process inside an app that is actually using the memory. A group can also hold a process by name (a model runner, a stray `node`), and auto-close will end just that process when its group's turn comes. Processes that belong to macOS are protected.
 - **Safety.** The app you are using is never closed, small apps are skipped, system apps are protected, and everything it does is written to an activity log.
 
 ## Build and run
@@ -29,7 +30,7 @@ Scripts/build-app.sh --install
 Run the tests:
 
 ```bash
-swift test
+Scripts/test.sh
 ```
 
 If the meters do not appear, a menu bar manager may have filed the new item in its hidden section. Expand it and drag the item out while holding Command. Until then, opening the app again (Finder, Spotlight) brings up its Settings window.
