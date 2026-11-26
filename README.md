@@ -32,7 +32,7 @@ Run the tests:
 swift test
 ```
 
-If the meters do not appear, a menu bar manager may have filed the new item in its hidden section. Expand it and drag the item out while holding Command.
+If the meters do not appear, a menu bar manager may have filed the new item in its hidden section. Expand it and drag the item out while holding Command. Until then, opening the app again (Finder, Spotlight) brings up its Settings window.
 
 ## Where things live
 

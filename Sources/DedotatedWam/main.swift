@@ -22,6 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         monitor.start()
     }
 
+    /// Opening the app again while it is running (Finder, Spotlight, `open`) shows Settings.
+    /// This is the way in when a menu bar manager has hidden the meters.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return false
+    }
+
     func showSettings() {
         if settingsWindow == nil {
             let window = NSWindow(
